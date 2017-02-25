@@ -1,0 +1,149 @@
+package WordCount.WordCount;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map.Entry;
+import java.util.StringTokenizer;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class WordCountWiki {
+
+	public static class TokenizerMapper
+
+			extends Mapper<Object, Text, Text, IntWritable> {
+
+		private final static IntWritable one = new IntWritable(1);
+		private final static IntWritable two = new IntWritable(1);
+		private Text word = new Text();
+
+		public boolean isPallindrome(String wordCurrent){
+			String original, reverse = "";
+			original = wordCurrent;
+			int length = original.length();
+			for ( int i = length - 1; i >= 0; i-- )
+		         reverse = reverse + original.charAt(i);
+		 
+		      if (original.equals(reverse)){
+		    	  return true;
+		      }
+		      else{
+		    	  return false;
+		      }
+		}
+		
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+			HashMap<String, Character> partsOfSpeech = new HashMap<String, Character>();
+			final String POSList = "/user/rxm153530/mobyposi.i";
+			HashMap<Integer, Integer> countOfWords = new HashMap<Integer, Integer>();
+			HashMap<Integer, Integer> numberOfPallindromes = new HashMap<Integer, Integer>();
+			HashMap<Integer, HashMap<Character, Integer>> distributionOfPOS = new HashMap<Integer, HashMap<Character, Integer>>();
+
+			BufferedReader br = new BufferedReader(new FileReader(POSList));
+			String currentLine;
+			while ((currentLine = br.readLine()) != null) {
+				partsOfSpeech.put(currentLine.substring(0, currentLine.length() - 2),
+						currentLine.charAt(currentLine.length() - 1));
+			}
+			StringTokenizer itr = new StringTokenizer(value.toString());
+			while (itr.hasMoreTokens()) {
+				String wordCurrent = itr.nextToken();
+				if (wordCurrent.length() > 5) {
+					if (partsOfSpeech.containsKey(wordCurrent)) {
+						if (countOfWords.containsKey(wordCurrent.length())) {
+							countOfWords.put(wordCurrent.length(), countOfWords.get(wordCurrent.length()) + 1);
+							if(isPallindrome(wordCurrent)){
+								numberOfPallindromes.put(wordCurrent.length(),numberOfPallindromes.get(wordCurrent.length())+1);
+							}
+							
+							if(distributionOfPOS.containsKey(wordCurrent.length())){
+								HashMap<Character, Integer> temp = distributionOfPOS.get(wordCurrent.length());
+								if(partsOfSpeech.containsKey(wordCurrent)){
+									char ch = partsOfSpeech.get(wordCurrent); 
+									if(temp.containsKey(ch)){
+										temp.put(ch, temp.get(wordCurrent)+1);
+									}
+									else{
+										temp.put(ch, 1);
+									}
+								}
+								distributionOfPOS.put(wordCurrent.length(), temp);
+							}
+							
+							
+						} else {
+							countOfWords.put(wordCurrent.length(), 1);
+							numberOfPallindromes.put(wordCurrent.length(), 1);
+							HashMap<Character, Integer> temp = new HashMap<Character, Integer>();
+							temp.put(partsOfSpeech.get(wordCurrent), 1);
+							distributionOfPOS.put(wordCurrent.length(), temp);
+						}
+						
+						
+						
+
+					}
+				}
+				word.set(String.valueOf(wordCurrent.length()+"wc"));
+				two.set(countOfWords.get(wordCurrent.length()));
+				context.write(word, two);
+				
+				HashMap<Character, Integer> temp = distributionOfPOS.get(wordCurrent.length());
+				for(Entry<Character, Integer> e : temp.entrySet()){
+					String tempKey = e.getKey() + "" + wordCurrent.length();
+					word.set(tempKey);
+					one.set(e.getValue());
+					context.write(word,one);
+				}
+				
+				word.set(String.valueOf(wordCurrent.length()+"pl"));
+				two.set(numberOfPallindromes.get(wordCurrent.length()));
+				context.write(word, two);
+
+			}
+		}
+		
+	}
+
+	public static class IntSumReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+		private IntWritable result = new IntWritable();
+
+		public void reduce(Text key, Iterable<IntWritable> values, Context context)
+				throws IOException, InterruptedException {
+			int sum = 0;
+			for (IntWritable val : values) {
+
+				sum += val.get();
+			}
+			result.set(sum);
+			context.write(key, result);
+		}
+	}
+
+	public static void main(String[] args) throws Exception {
+		Configuration conf = new Configuration();
+		conf.set("mapred.job.tracker", "hdfs://cshadoop1:61120");
+		conf.set("yarn.resourcemanager.address", "cshadoop1.utdallas.edu:8032");
+		conf.set("mapreduce.framework.name", "yarn");
+		Job job = Job.getInstance(conf, "word count");
+		job.setJarByClass(WordCount.class);
+		job.setMapperClass(TokenizerMapper.class);
+		job.setCombinerClass(IntSumReducer.class);
+		job.setReducerClass(IntSumReducer.class);
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(IntWritable.class);
+		FileInputFormat.addInputPath(job, new Path(args[0]));
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		System.exit(job.waitForCompletion(true) ? 0 : 1);
+	}
+}
