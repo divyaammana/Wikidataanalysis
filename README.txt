@@ -1,3 +1,5 @@
+Main files located at /src/main/java/WordCount/WordCount/
+
 To execute:
 (1) hadoop jar WordCount.jar WordCount.WordCount.Q1 /yelp/business/business.csv ouputq1
 (2) hadoop jar WordCount.jar WordCount.WordCount.Q2 /yelp/business/business.csv ouputq2
